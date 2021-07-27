@@ -11,12 +11,14 @@ const PORT = 3000;
 const refreshTokenStore = {};
 const accessTokenCache = new NodeCache({ deleteOnExpire: true });
 const ENV = {
+  LOCALHOST: 'LOCALHOST',
   QA: 'QA',
   PROD: 'PROD'
 }
-let env = process.env.ENV === ENV.QA ? ENV.QA : ENV.PROD;
+let hubspotEnv = process.env.HUBSPOT_ENV.toUpperCase() === ENV.QA ? ENV.QA : ENV.PROD;
+console.log({hubspotEnv})
 
-if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET) {
+if (!process.env.CLIENT_ID_PROD || !process.env.CLIENT_SECRET_PROD) {
     throw new Error('Missing CLIENT_ID or CLIENT_SECRET environment variable.')
 }
 
@@ -30,8 +32,15 @@ if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET) {
 
 // Replace the following with the values from your app auth config, 
 // or set them as environment variables before running.
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
+let CLIENT_ID;
+let CLIENT_SECRET;
+
+const generateClientCredentials = () => {
+  console.log({hubspotEnv})
+  CLIENT_ID = hubspotEnv.toUpperCase()===ENV.QA ? process.env.CLIENT_ID_QA : process.env.CLIENT_ID_PROD;
+  CLIENT_SECRET = hubspotEnv.toUpperCase()===ENV.QA ? process.env.CLIENT_SECRET_QA : process.env.CLIENT_SECRET_PROD;
+}
+generateClientCredentials();
 
 // Scopes for this app will default to `contacts`
 // To request others, set the SCOPE environment variable instead
@@ -40,8 +49,9 @@ if (process.env.SCOPE) {
     SCOPES = (process.env.SCOPE.split(/ |, ?|%20/)).join(' ');
 }
 
+let appBaseUrl = (process.env.NODE_ENV.toUpperCase()===ENV.LOCALHOST) ? `http://localhost:${PORT}` : 'https://alex-devex-app.herokuapp.com/'
 // On successful install, users will be redirected to /oauth-callback
-const REDIRECT_URI = `http://localhost:${PORT}/oauth-callback`;
+const REDIRECT_URI = `${appBaseUrl}/oauth-callback`;
 
 //===========================================================================//
 
@@ -62,8 +72,8 @@ app.use(session({
 let apiBaseUrl;
 let authUrl;
 const buildHubspotUrls = () => {
-  const hubspotBaseUrl = (env!==ENV.QA) ? 'https://app.hubspot.com' : 'https://app.hubspotqa.com';
-  apiBaseUrl = (env!==ENV.QA) ? 'https://api.hubapi.com' : 'https://api.hubapiqa.com';
+  const hubspotBaseUrl = (hubspotEnv!==ENV.QA) ? 'https://app.hubspot.com' : 'https://app.hubspotqa.com';
+  apiBaseUrl = (hubspotEnv!==ENV.QA) ? 'https://api.hubapi.com' : 'https://api.hubapiqa.com';
   authUrl =
     `${hubspotBaseUrl}/oauth/authorize` +
     `?client_id=${encodeURIComponent(CLIENT_ID)}` + // app's client ID
@@ -212,36 +222,39 @@ const displayContactName = (res, contact) => {
 
 app.get('/', async (req, res) => {
   res.setHeader('Content-Type', 'text/html');
-  res.write(`<h2>HubSpot OAuth 2.0 Quickstart App</h2>`);
-  res.write(`<h2>Active Env: ${env}</h2>`);
+  res.write(`<h1>HubSpot OAuth 2.0 Quickstart App</h1>`);
+  res.write(`<h2>Node Env: ${process.env.NODE_ENV}</h2>`);
+  res.write(`<h2>Active Hubspot Env: ${hubspotEnv}</h2>`);
+  // add a little btn to toggle between QA and PROD
+  res.write(`<p>Toggle between Hubspot QA and PROD Urls for interacting with oAuth and Hubspot Accounts</p>`);
+  res.write(`<button id="env-toggle-btn">Toggle Hubspot Env</button>`);
+  // make local api call
+  res.write(`
+  <script>
+    document.getElementById("env-toggle-btn").addEventListener("click", ()=> {
+      fetch('${appBaseUrl}/env-toggle')
+      .then(response => response.json())
+      .then(data => console.log(data));
+    });
+  </script>
+  `);
   if (isAuthorized(req.sessionID)) {
     const accessToken = await getAccessToken(req.sessionID);
     const contact = await getContact(accessToken);
     res.write(`<h4>Access token: ${accessToken}</h4>`);
     displayContactName(res, contact);
-  } else {
-    res.write(`<a href="/install"><h3>Install the app</h3></a>`);
-
-    // add a little btn to toggle between QA and PROD
-    res.write(`<button id="env-toggle-btn">Toggle Env</button>`);
-    // make local api call
-    res.write(`
-    <script>
-      document.getElementById("env-toggle-btn").addEventListener("click", ()=> {
-        fetch('http://localhost:3000/env-toggle')
-        .then(response => response.json())
-        .then(data => console.log(data));
-      });
-    </script>
-    `);
   }
+  res.write(`<p>If you switch environments you might need to reinstsall the app</p>`);
+  res.write(`<a href="/install"><h3>Install the app</h3></a>`);
+  res.write(`<h2 style='color:red'>If you toggle between environments refresh the page, no react here</h2>`);
   res.end();
 });
 
 app.get('/env-toggle', async (req, res) => {
-  env = (env===ENV.QA) ? ENV.PROD : ENV.QA;
+  hubspotEnv = (hubspotEnv===ENV.QA) ? ENV.PROD : ENV.QA;
   buildHubspotUrls();
-  res.send({env});
+  generateClientCredentials();
+  res.send({hubspotEnv});
 });
 
 app.get('/error', (req, res) => {
@@ -254,5 +267,5 @@ app.post('/webhook', (req, res) => {
   console.log({req});
 });
 
-app.listen(PORT, () => console.log(`=== Starting your app on http://localhost:${PORT} ===`));
-opn(`http://localhost:${PORT}`);
+app.listen(PORT, () => console.log(`=== Starting your app on ${appBaseUrl} ===`));
+opn(`${appBaseUrl}`);
