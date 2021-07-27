@@ -54,8 +54,11 @@ app.use(session({
 // Step 1
 // Build the authorization URL to redirect a user
 // to when they choose to install the app
+const hubspotBaseUrl = (process.env.ENV!=='QA') ? 'https://app.hubspot.com' : 'https://app.hubspotqa.com';
+const apiBaseUrl = (process.env.ENV!=='QA') ? 'https://api.hubapi.com' : 'https://api.hubapiqa.com';
+
 const authUrl =
-  'https://app.hubspot.com/oauth/authorize' +
+  `${hubspotBaseUrl}/oauth/authorize` +
   `?client_id=${encodeURIComponent(CLIENT_ID)}` + // app's client ID
   `&scope=${encodeURIComponent(SCOPES)}` + // scopes being requested by the app
   `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`; // where to send the user after the consent page
@@ -67,6 +70,7 @@ app.get('/install', (req, res) => {
   console.log('=== Initiating OAuth 2.0 flow with HubSpot ===');
   console.log('');
   console.log("===> Step 1: Redirecting user to your app's OAuth URL");
+  console.log(authUrl)
   res.redirect(authUrl);
   console.log('===> Step 2: User is being prompted for consent by HubSpot');
 });
@@ -100,6 +104,7 @@ app.get('/oauth-callback', async (req, res) => {
     console.log('===> Step 4: Exchanging authorization code for an access token and refresh token');
     const token = await exchangeForTokens(req.sessionID, authCodeProof);
     if (token.message) {
+      console.log({token, CLIENT_ID, CLIENT_SECRET})
       return res.redirect(`/error?msg=${token.message}`);
     }
 
@@ -115,7 +120,7 @@ app.get('/oauth-callback', async (req, res) => {
 
 const exchangeForTokens = async (userId, exchangeProof) => {
   try {
-    const responseBody = await request.post('https://api.hubapi.com/oauth/v1/token', {
+    const responseBody = await request.post(`${apiBaseUrl}/oauth/v1/token`, {
       form: exchangeProof
     });
     // Usually, this token data should be persisted in a database and associated with
@@ -170,8 +175,8 @@ const getContact = async (accessToken) => {
       'Content-Type': 'application/json'
     };
     console.log('===> Replace the following request.get() to test other API calls');
-    console.log('===> request.get(\'https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=1\')');
-    const result = await request.get('https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=1', {
+    console.log(`===> request.get(\'${apiBaseUrl}/contacts/v1/lists/all/contacts/all?count=1\')`);
+    const result = await request.get(`${apiBaseUrl}/contacts/v1/lists/all/contacts/all?count=1`, {
       headers: headers
     });
 
@@ -213,6 +218,10 @@ app.get('/error', (req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.write(`<h4>Error: ${req.query.msg}</h4>`);
   res.end();
+});
+
+app.post('/webhook', (req, res) => {
+  console.log({req});
 });
 
 app.listen(PORT, () => console.log(`=== Starting your app on http://localhost:${PORT} ===`));
