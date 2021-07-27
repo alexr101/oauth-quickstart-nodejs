@@ -10,6 +10,11 @@ const PORT = 3000;
 
 const refreshTokenStore = {};
 const accessTokenCache = new NodeCache({ deleteOnExpire: true });
+const ENV = {
+  QA: 'QA',
+  PROD: 'PROD'
+}
+let env = process.env.ENV === ENV.QA ? ENV.QA : ENV.PROD;
 
 if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET) {
     throw new Error('Missing CLIENT_ID or CLIENT_SECRET environment variable.')
@@ -54,14 +59,19 @@ app.use(session({
 // Step 1
 // Build the authorization URL to redirect a user
 // to when they choose to install the app
-const hubspotBaseUrl = (process.env.ENV!=='QA') ? 'https://app.hubspot.com' : 'https://app.hubspotqa.com';
-const apiBaseUrl = (process.env.ENV!=='QA') ? 'https://api.hubapi.com' : 'https://api.hubapiqa.com';
+let apiBaseUrl;
+let authUrl;
+const buildHubspotUrls = () => {
+  const hubspotBaseUrl = (env!==ENV.QA) ? 'https://app.hubspot.com' : 'https://app.hubspotqa.com';
+  apiBaseUrl = (env!==ENV.QA) ? 'https://api.hubapi.com' : 'https://api.hubapiqa.com';
+  authUrl =
+    `${hubspotBaseUrl}/oauth/authorize` +
+    `?client_id=${encodeURIComponent(CLIENT_ID)}` + // app's client ID
+    `&scope=${encodeURIComponent(SCOPES)}` + // scopes being requested by the app
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`; // where to send the user after the consent page
+}
+buildHubspotUrls();
 
-const authUrl =
-  `${hubspotBaseUrl}/oauth/authorize` +
-  `?client_id=${encodeURIComponent(CLIENT_ID)}` + // app's client ID
-  `&scope=${encodeURIComponent(SCOPES)}` + // scopes being requested by the app
-  `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`; // where to send the user after the consent page
 
 // Redirect the user from the installation page to
 // the authorization URL
@@ -203,6 +213,7 @@ const displayContactName = (res, contact) => {
 app.get('/', async (req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.write(`<h2>HubSpot OAuth 2.0 Quickstart App</h2>`);
+  res.write(`<h2>Active Env: ${env}</h2>`);
   if (isAuthorized(req.sessionID)) {
     const accessToken = await getAccessToken(req.sessionID);
     const contact = await getContact(accessToken);
@@ -210,8 +221,27 @@ app.get('/', async (req, res) => {
     displayContactName(res, contact);
   } else {
     res.write(`<a href="/install"><h3>Install the app</h3></a>`);
+
+    // add a little btn to toggle between QA and PROD
+    res.write(`<button id="env-toggle-btn">Toggle Env</button>`);
+    // make local api call
+    res.write(`
+    <script>
+      document.getElementById("env-toggle-btn").addEventListener("click", ()=> {
+        fetch('http://localhost:3000/env-toggle')
+        .then(response => response.json())
+        .then(data => console.log(data));
+      });
+    </script>
+    `);
   }
   res.end();
+});
+
+app.get('/env-toggle', async (req, res) => {
+  env = (env===ENV.QA) ? ENV.PROD : ENV.QA;
+  buildHubspotUrls();
+  res.send({env});
 });
 
 app.get('/error', (req, res) => {
