@@ -49,7 +49,7 @@ if (process.env.SCOPE) {
     SCOPES = (process.env.SCOPE.split(/ |, ?|%20/)).join(' ');
 }
 
-let appBaseUrl = (process.env.NODE_ENV.toUpperCase()===ENV.LOCALHOST) ? `http://localhost:${PORT}` : 'https://alex-devex-app.herokuapp.com/'
+let appBaseUrl = (process.env.NODE_ENV.toUpperCase()===ENV.LOCALHOST) ? `http://localhost:${PORT}` : 'https://alex-devex-app.herokuapp.com'
 // On successful install, users will be redirected to /oauth-callback
 const REDIRECT_URI = `${appBaseUrl}/oauth-callback`;
 
